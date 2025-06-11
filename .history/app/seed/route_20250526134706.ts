@@ -5,7 +5,6 @@ import { invoices, customers, revenue, users } from '../lib/placeholder-data';
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 async function seedUsers() {
-  console.log('🔄 Creating users table...');
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
   await sql`
     CREATE TABLE IF NOT EXISTS users (
@@ -16,7 +15,6 @@ async function seedUsers() {
     );
   `;
 
-  console.log('🔄 Inserting users...');
   const insertedUsers = await Promise.all(
     users.map(async (user) => {
       const hashedPassword = await bcrypt.hash(user.password, 10);
@@ -28,12 +26,10 @@ async function seedUsers() {
     }),
   );
 
-  console.log(`✅ Users seeded: ${insertedUsers.length} records`);
   return insertedUsers;
 }
 
 async function seedInvoices() {
-  console.log('🔄 Creating invoices table...');
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
 
   await sql`
@@ -46,7 +42,6 @@ async function seedInvoices() {
     );
   `;
 
-  console.log('🔄 Inserting invoices...');
   const insertedInvoices = await Promise.all(
     invoices.map(
       (invoice) => sql`
@@ -57,12 +52,10 @@ async function seedInvoices() {
     ),
   );
 
-  console.log(`✅ Invoices seeded: ${insertedInvoices.length} records`);
   return insertedInvoices;
 }
 
 async function seedCustomers() {
-  console.log('🔄 Creating customers table...');
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
 
   await sql`
@@ -74,7 +67,6 @@ async function seedCustomers() {
     );
   `;
 
-  console.log('🔄 Inserting customers...');
   const insertedCustomers = await Promise.all(
     customers.map(
       (customer) => sql`
@@ -85,12 +77,10 @@ async function seedCustomers() {
     ),
   );
 
-  console.log(`✅ Customers seeded: ${insertedCustomers.length} records`);
   return insertedCustomers;
 }
 
 async function seedRevenue() {
-  console.log('🔄 Creating revenue table...');
   await sql`
     CREATE TABLE IF NOT EXISTS revenue (
       month VARCHAR(4) NOT NULL UNIQUE,
@@ -98,60 +88,30 @@ async function seedRevenue() {
     );
   `;
 
-  console.log('🔄 Inserting revenue...');
-
-  // 使用单个批量插入而不是 Promise.all
-  try {
-    const result = await sql`
-      INSERT INTO revenue ${sql(revenue, 'month', 'revenue')}
-      ON CONFLICT (month) DO NOTHING;
-    `;
-    console.log(`✅ Revenue seeded: ${result.length} records`);
-    return result;
-  } catch (error) {
-    console.error('Revenue insertion error:', error);
-    // 如果批量插入失败，改为逐条插入
-    console.log('Falling back to individual inserts...');
-    for (const rev of revenue) {
-      await sql`
+  const insertedRevenue = await Promise.all(
+    revenue.map(
+      (rev) => sql`
         INSERT INTO revenue (month, revenue)
         VALUES (${rev.month}, ${rev.revenue})
         ON CONFLICT (month) DO NOTHING;
-      `;
-    }
-    console.log(`✅ Revenue seeded: ${revenue.length} records (fallback)`);
-  }
+      `,
+    ),
+  );
+
+  return insertedRevenue;
 }
 
 export async function GET() {
   try {
-    console.log('🚀 Starting database seed...');
+    const result = await sql.begin((sql) => [
+      seedUsers(),
+      seedCustomers(),
+      seedInvoices(),
+      seedRevenue(),
+    ]);
 
-    // 移除 sql.begin() 事务，改为顺序执行
-    console.log('📝 Seeding users...');
-    await seedUsers();
-
-    console.log('👥 Seeding customers...');
-    await seedCustomers();
-
-    console.log('📄 Seeding invoices...');
-    await seedInvoices();
-
-    console.log('💰 Seeding revenue...');
-    await seedRevenue();
-
-    console.log('🎉 Database seeded successfully!');
     return Response.json({ message: 'Database seeded successfully' });
   } catch (error) {
-    console.error('❌ Seeding error:', error);
-
-    // 返回更详细的错误信息
-    return Response.json({
-      error: {
-        message: error.message || 'Unknown error',
-        code: error.code || 'UNKNOWN',
-        name: error.name || 'Error'
-      }
-    }, { status: 500 });
+    return Response.json({ error }, { status: 500 });
   }
 }

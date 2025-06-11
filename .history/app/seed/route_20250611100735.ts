@@ -99,28 +99,18 @@ async function seedRevenue() {
   `;
 
   console.log('🔄 Inserting revenue...');
-
-  // 使用单个批量插入而不是 Promise.all
-  try {
-    const result = await sql`
-      INSERT INTO revenue ${sql(revenue, 'month', 'revenue')}
-      ON CONFLICT (month) DO NOTHING;
-    `;
-    console.log(`✅ Revenue seeded: ${result.length} records`);
-    return result;
-  } catch (error) {
-    console.error('Revenue insertion error:', error);
-    // 如果批量插入失败，改为逐条插入
-    console.log('Falling back to individual inserts...');
-    for (const rev of revenue) {
-      await sql`
+  const insertedRevenue = await Promise.all(
+    revenue.map(
+      (rev) => sql`
         INSERT INTO revenue (month, revenue)
         VALUES (${rev.month}, ${rev.revenue})
         ON CONFLICT (month) DO NOTHING;
-      `;
-    }
-    console.log(`✅ Revenue seeded: ${revenue.length} records (fallback)`);
-  }
+      `,
+    ),
+  );
+
+  console.log(`✅ Revenue seeded: ${insertedRevenue.length} records`);
+  return insertedRevenue;
 }
 
 export async function GET() {
